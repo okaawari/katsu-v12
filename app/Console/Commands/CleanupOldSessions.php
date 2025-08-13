@@ -1,0 +1,115 @@
+<?php
+
+namespace App\Console\Commands;
+
+use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
+use Carbon\Carbon;
+
+class CleanupOldSessions extends Command
+{
+    /**
+     * The name and signature of the console command.
+     *
+     * @var string
+     */
+    protected $signature = 'sessions:cleanup {--days=7 : Number of days to keep sessions}';
+
+    /**
+     * The console command description.
+     *
+     * @var string
+     */
+    protected $description = 'Clean up old and duplicate sessions';
+
+    /**
+     * Execute the console command.
+     */
+    public function handle()
+    {
+        $days = $this->option('days');
+        $cutoffTime = time() - ($days * 24 * 60 * 60);
+        
+        $this->info("Cleaning up sessions older than {$days} days...");
+        
+        // Delete old sessions
+        $oldSessionsDeleted = DB::table('sessions')
+            ->where('last_activity', '<', $cutoffTime)
+            ->delete();
+            
+        $this->info("Deleted {$oldSessionsDeleted} old sessions.");
+        
+        // Clean up duplicate sessions
+        $this->cleanupDuplicateSessions();
+        
+        $this->info('Session cleanup completed successfully.');
+    }
+    
+    /**
+     * Clean up duplicate sessions for the same device/user combination.
+     */
+    private function cleanupDuplicateSessions(): void
+    {
+        $users = DB::table('sessions')
+            ->whereNotNull('user_id')
+            ->distinct()
+            ->pluck('user_id');
+            
+        $totalDuplicatesDeleted = 0;
+        
+        foreach ($users as $userId) {
+            $userSessions = DB::table('sessions')
+                ->where('user_id', $userId)
+                ->get();
+                
+            $deviceGroups = [];
+            $sessionsToDelete = [];
+            
+            // Group sessions by device fingerprint
+            foreach ($userSessions as $session) {
+                $fingerprint = $this->createDeviceFingerprint($session->ip_address, $session->user_agent);
+                
+                if (!isset($deviceGroups[$fingerprint])) {
+                    $deviceGroups[$fingerprint] = [];
+                }
+                
+                $deviceGroups[$fingerprint][] = $session;
+            }
+            
+            // For each device group, keep only the most recent session
+            foreach ($deviceGroups as $fingerprint => $sessions) {
+                if (count($sessions) > 1) {
+                    // Sort by last_activity descending
+                    usort($sessions, function ($a, $b) {
+                        return $b->last_activity <=> $a->last_activity;
+                    });
+                    
+                    // Keep the first (most recent) session, mark others for deletion
+                    for ($i = 1; $i < count($sessions); $i++) {
+                        $sessionsToDelete[] = $sessions[$i]->id;
+                    }
+                }
+            }
+            
+            // Delete duplicate sessions
+            if (!empty($sessionsToDelete)) {
+                $deleted = DB::table('sessions')->whereIn('id', $sessionsToDelete)->delete();
+                $totalDuplicatesDeleted += $deleted;
+            }
+        }
+        
+        $this->info("Deleted {$totalDuplicatesDeleted} duplicate sessions.");
+    }
+    
+    /**
+     * Create a device fingerprint based on IP and user agent.
+     */
+    private function createDeviceFingerprint(?string $ipAddress, ?string $userAgent): string
+    {
+        $ip = $ipAddress ?? 'unknown';
+        $ua = $userAgent ?? 'unknown';
+        
+        // Create a hash that represents this device/browser combination
+        return md5($ip . '|' . $ua);
+    }
+}
