@@ -10,7 +10,11 @@ use Illuminate\Support\Facades\Route;
 // Public routes
 Route::get('/', function () {
     return view('welcome');
-})->name('home');
+})->name('welcome');
+
+Route::get('/browse', function () {
+    return view('browse');
+})->name('browse');
 
 // Public profile routes
 Route::get('profile', Show::class)->name('profile.show');
