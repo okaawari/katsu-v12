@@ -20,25 +20,14 @@ class Anime extends Model
         'title',
         'title_english',
         'title_japanese',
-        'title_romanji',
         'slug',
-        'synopsis',
         'description',
-        'studio',
-        'source',
-        'rating',
+        'content_rating',
         'status',
-        'aired_from',
-        'aired_to',
-        'season',
-        'year',
         'total_episodes',
         'current_episode',
-        'episode_duration',
-        'poster_image',
         'cover_image',
         'banner_image',
-        'gallery',
         'average_rating',
         'rating_count',
         'view_count',
@@ -52,9 +41,6 @@ class Anime extends Model
     ];
 
     protected $casts = [
-        'aired_from' => 'date',
-        'aired_to' => 'date',
-        'gallery' => 'array',
         'average_rating' => 'decimal:2',
         'is_featured' => 'boolean',
         'published_at' => 'datetime',
@@ -161,19 +147,7 @@ class Anime extends Model
     }
 
     /**
-     * Get the anime's duration in a human readable format.
-     */
-    public function getFormattedDurationAttribute(): string
-    {
-        if (!$this->episode_duration) {
-            return 'Unknown';
-        }
-        
-        return $this->episode_duration . ' per episode';
-    }
-
-    /**
-     * Get the anime's completion percentage.
+     * Get the series completion percentage.
      */
     public function getCompletionPercentageAttribute(): float
     {
@@ -185,10 +159,41 @@ class Anime extends Model
     }
 
     /**
-     * Check if the anime is completed.
+     * Check if the series is completed.
      */
     public function getIsCompletedAttribute(): bool
     {
         return $this->status === 'completed' || $this->current_episode >= $this->total_episodes;
+    }
+
+    /**
+     * Get published episodes for the series.
+     */
+    public function publishedEpisodes()
+    {
+        return $this->episodes()
+                    ->where('status', 'published')
+                    ->where('visibility', '!=', 'private')
+                    ->where(function ($query) {
+                        $query->whereNull('scheduled_at')
+                              ->orWhere('scheduled_at', '<=', now());
+                    })
+                    ->orderBy('episode_number');
+    }
+
+    /**
+     * Get the latest published episode.
+     */
+    public function latestEpisode()
+    {
+        return $this->publishedEpisodes()->latest('published_at')->first();
+    }
+
+    /**
+     * Get episodes count by status.
+     */
+    public function getEpisodesCountByStatus(string $status): int
+    {
+        return $this->episodes()->where('status', $status)->count();
     }
 }

@@ -16,46 +16,33 @@ return new class extends Migration
             $table->foreignId('category_id')->nullable()->constrained()->onDelete('set null');
             $table->foreignId('author_id')->constrained('users')->onDelete('cascade');
             
-            // Basic Information
+            // Basic Information (Series Container)
             $table->string('title');
             $table->string('title_english')->nullable();
             $table->string('title_japanese')->nullable();
-            $table->string('title_romanji')->nullable();
             $table->string('slug')->unique();
             
             // Content Information
-            $table->longText('synopsis')->nullable();
-            $table->text('description')->nullable();
-            $table->string('studio');
-            $table->string('source')->nullable(); // manga, light novel, original, etc.
-            $table->string('rating')->default('PG-13'); // G, PG, PG-13, R, R+
+            $table->longText('description')->nullable(); // General series description
+            $table->string('content_rating')->default('R18+'); // Content rating
             
-            // Release Information
+            // Series Information
             $table->string('status')->default('ongoing'); // completed, ongoing, upcoming, cancelled
-            $table->date('aired_from')->nullable();
-            $table->date('aired_to')->nullable();
-            $table->string('season')->nullable(); // spring, summer, fall, winter
-            $table->integer('year')->nullable();
-            
-            // Episode Information
             $table->integer('total_episodes')->default(1);
             $table->integer('current_episode')->default(0);
-            $table->string('episode_duration')->nullable(); // average episode duration
             
-            // Media
-            $table->string('poster_image')->nullable();
+            // Series Media (Optional - episodes have their own)
             $table->string('cover_image')->nullable();
             $table->string('banner_image')->nullable();
-            $table->json('gallery')->nullable(); // additional images
             
-            // Statistics
+            // Statistics (Aggregated from episodes)
             $table->decimal('average_rating', 3, 2)->default(0.00);
             $table->integer('rating_count')->default(0);
             $table->integer('view_count')->default(0);
             $table->integer('favorite_count')->default(0);
             
             // Publishing
-            $table->enum('visibility', ['public', 'private', 'unlisted'])->default('public');
+            $table->enum('visibility', ['public', 'private', 'unlisted'])->default('private');
             $table->boolean('is_featured')->default(false);
             $table->timestamp('published_at')->nullable();
             
@@ -68,9 +55,8 @@ return new class extends Migration
             
             // Indexes
             $table->index(['status', 'visibility']);
-            $table->index(['year', 'season']);
             $table->index(['is_featured', 'published_at']);
-            $table->fullText(['title', 'title_english', 'synopsis']);
+            $table->fullText(['title', 'title_english', 'description']);
         });
     }
 

@@ -22,6 +22,9 @@ class Episode extends Model
         'title_japanese',
         'synopsis',
         'slug',
+        'poster_image',
+        'thumbnail_image',
+        'preview_images',
         'video_480p',
         'video_720p',
         'video_1080p',
@@ -31,7 +34,6 @@ class Episode extends Model
         'subtitle_tracks',
         'duration',
         'duration_seconds',
-        'thumbnail',
         'sprite_vtt',
         'sprite_image',
         'sprite_columns',
@@ -44,23 +46,37 @@ class Episode extends Model
         'resolution',
         'fps',
         'status',
-        'aired_at',
+        'visibility',
+        'scheduled_at',
         'published_at',
+        'is_featured',
+        'is_premium',
+        'content_tags',
+        'content_warnings',
         'view_count',
         'average_rating',
         'rating_count',
+        'favorite_count',
         'server_location',
         'cdn_urls',
+        'meta_title',
+        'meta_description',
+        'meta_keywords',
     ];
 
     protected $casts = [
+        'preview_images' => 'array',
         'subtitle_tracks' => 'array',
         'cdn_urls' => 'array',
-        'aired_at' => 'datetime',
+        'scheduled_at' => 'datetime',
         'published_at' => 'datetime',
+        'is_featured' => 'boolean',
+        'is_premium' => 'boolean',
+        'content_tags' => 'array',
         'average_rating' => 'decimal:2',
         'fps' => 'decimal:2',
         'sprite_interval' => 'decimal:2',
+        'meta_keywords' => 'array',
     ];
 
     /**
@@ -112,21 +128,64 @@ class Episode extends Model
     }
 
     /**
-     * Scope a query to only include ready episodes.
-     */
-    public function scopeReady($query)
-    {
-        return $query->where('status', 'ready');
-    }
-
-    /**
      * Scope a query to only include published episodes.
      */
     public function scopePublished($query)
     {
-        return $query->where('status', 'ready')
+        return $query->where('status', 'published')
+                    ->where('visibility', '!=', 'private')
                     ->whereNotNull('published_at')
                     ->where('published_at', '<=', now());
+    }
+
+    /**
+     * Scope a query to only include scheduled episodes.
+     */
+    public function scopeScheduled($query)
+    {
+        return $query->where('status', 'scheduled')
+                    ->whereNotNull('scheduled_at');
+    }
+
+    /**
+     * Scope a query to only include episodes ready to be published.
+     */
+    public function scopeReadyToPublish($query)
+    {
+        return $query->where('status', 'scheduled')
+                    ->where('scheduled_at', '<=', now());
+    }
+
+    /**
+     * Scope a query to only include public episodes.
+     */
+    public function scopePublic($query)
+    {
+        return $query->where('visibility', 'public');
+    }
+
+    /**
+     * Scope a query to only include featured episodes.
+     */
+    public function scopeFeatured($query)
+    {
+        return $query->where('is_featured', true);
+    }
+
+    /**
+     * Scope a query to only include premium episodes.
+     */
+    public function scopePremium($query)
+    {
+        return $query->where('is_premium', true);
+    }
+
+    /**
+     * Scope a query to only include free episodes.
+     */
+    public function scopeFree($query)
+    {
+        return $query->where('is_premium', false);
     }
 
     /**
@@ -212,5 +271,104 @@ class Episode extends Model
     public function getHasSpritesAttribute(): bool
     {
         return !empty($this->sprite_vtt) && !empty($this->sprite_image);
+    }
+
+    /**
+     * Check if the episode is scheduled for future publication.
+     */
+    public function getIsScheduledAttribute(): bool
+    {
+        return $this->status === 'scheduled' && 
+               $this->scheduled_at && 
+               $this->scheduled_at->gt(now());
+    }
+
+    /**
+     * Check if the episode is ready to be published.
+     */
+    public function getIsReadyToPublishAttribute(): bool
+    {
+        return $this->status === 'scheduled' && 
+               $this->scheduled_at && 
+               $this->scheduled_at->lte(now());
+    }
+
+    /**
+     * Check if the episode is publicly viewable.
+     */
+    public function getIsPubliclyViewableAttribute(): bool
+    {
+        return $this->status === 'published' && 
+               $this->visibility === 'public' &&
+               ($this->published_at === null || $this->published_at->lte(now()));
+    }
+
+    /**
+     * Check if the episode is hidden.
+     */
+    public function getIsHiddenAttribute(): bool
+    {
+        return $this->status === 'hidden' || $this->visibility === 'private';
+    }
+
+    /**
+     * Get the episode's main display image (poster or thumbnail).
+     */
+    public function getDisplayImageAttribute(): string
+    {
+        return $this->poster_image ?: $this->thumbnail_image;
+    }
+
+    /**
+     * Schedule the episode for publication.
+     */
+    public function scheduleForPublication(\DateTime $scheduledAt): bool
+    {
+        $this->status = 'scheduled';
+        $this->scheduled_at = $scheduledAt;
+        
+        return $this->save();
+    }
+
+    /**
+     * Publish the episode immediately.
+     */
+    public function publish(): bool
+    {
+        $this->status = 'published';
+        $this->published_at = now();
+        $this->scheduled_at = null;
+        
+        return $this->save();
+    }
+
+    /**
+     * Hide the episode from public view.
+     */
+    public function hide(): bool
+    {
+        $this->status = 'hidden';
+        
+        return $this->save();
+    }
+
+    /**
+     * Set the episode as premium content.
+     */
+    public function makePremium(): bool
+    {
+        $this->is_premium = true;
+        
+        return $this->save();
+    }
+
+    /**
+     * Set the episode as free content.
+     */
+    public function makeFree(): bool
+    {
+        $this->is_premium = false;
+        
+        return $this->save();
     }
 }
